@@ -14,8 +14,8 @@ const int screenWidth = 40;
 const int screenHeight = 30; 
 const int enemiesPerScreen = 5; 
 
-const int WIDTH = 320 * 5;
-const int HEIGHT = 240 * 5;
+const int WIDTH = 320;
+const int HEIGHT = 240;
 
 const int width = WIDTH;
 const int height = HEIGHT;
@@ -33,6 +33,8 @@ const int height = HEIGHT;
 #define RIGHT 2
 
 using namespace std;
+  
+SDL_Surface *dblbuf;
 
 boolean showingGameover = false;
 boolean showingEnd = false;
@@ -56,8 +58,8 @@ float winTimer = 0;
 
 SDL_Surface *tilemap;
 SDL_Surface *tilemapalpha;
-SDL_Surface **tiles;
-SDL_Surface **tilesalpha;
+vector<SDL_Surface *> tiles;
+vector<SDL_Surface *> tilesalpha;
 
 void loadScreens();
 void setDefaultScreens();
@@ -70,8 +72,11 @@ boolean setholdingAction(int on);
 
 float millisecs = 0;
 
+void keyPressed();
+void keyReleased();
+
 float millis() {
-  return millisecs;
+  return SDL_GetTicks()*0.001;
 }
 
 void textAlign(int align) {
@@ -132,14 +137,36 @@ void noFill()
 {
 }
 
-void image(SDL_Surface *image, int x, int y)
+	
+SDL_Rect br;
+
+void image(SDL_Surface *im, int x, int y)
 {
+	br.x = x;
+	br.y = y;
+	br.w = im->w;
+	br.h = im->h;
+	SDL_BlitSurface(im,NULL,dblbuf,&br);
 }
 
-void image(SDL_Surface *image, float x, float y)
+void image(SDL_Surface *im, float x, float y)
 {
+	image(im,(int)x,(int)y);
 }
 
+void imagealpha(SDL_Surface *im, int x, int y)
+{
+	br.x = x;
+	br.y = y;
+	br.w = im->w;
+	br.h = im->h;
+	SDL_BlitSurface(im,NULL,dblbuf,&br);
+}
+
+void imagealpha(SDL_Surface *im, float x, float y)
+{
+	image(im,(int)x,(int)y);
+}
 void rect(int x, int y, int w, int h)
 {
 }
@@ -212,7 +239,7 @@ void drawTileNum(int x, int y, int tnum)
     if (rand() * 10000000 >
         9415000 - abs(cos(millis() * 0.1) * 10000000))
     {
-      fnum = (int)(rand() * 700);
+      fnum = (int)(rand() % 700);
     }
 
     else
@@ -222,6 +249,8 @@ void drawTileNum(int x, int y, int tnum)
   {
     fnum = tnum;
   }
+
+  if (fnum == 510) return;
   image(tiles[fnum], x * 8, y * 8);
 }
 
@@ -279,7 +308,7 @@ void drawTileNumAlpha(int x, int y, int tnum)
     if (rand() * 10000000 >
         9415000 - abs(cos(millis() * 0.1) * 10000000))
     {
-      fnum = (int)(rand() * 700);
+      fnum = (int)(rand() % 700);
     }
 
     else
@@ -289,6 +318,7 @@ void drawTileNumAlpha(int x, int y, int tnum)
   {
     fnum = tnum;
   }
+  if (fnum == 510) return;
   image(tilesalpha[fnum], x * 8, y * 8);
 }
 
@@ -378,12 +408,14 @@ public:
   int y;
   int w;
   int h;
+  bool init = false;
   Frame()
   {
     x = 0;
     y = 0;
     w = 0;
     h = 0;
+    init = false;
   }
 
   Frame(int _x, int _y, int _w, int _h)
@@ -392,6 +424,7 @@ public:
     y = _y;
     w = _w;
     h = _h;
+    init = true;
   }
 };
 
@@ -425,6 +458,7 @@ class Sprite
     framecount = _framecount;
 
     frames.resize(framecount);
+    frames.clear();
 
     for (int i = 0; i < framecount; i++)
     {
@@ -433,6 +467,7 @@ class Sprite
       f.y = oy;
       f.w = ow;
       f.h = oh;
+      f.init = true;
       frames.push_back(f);
     }
   }
@@ -477,7 +512,7 @@ class Sprite
       animframe = 0;
   }
 
-  Frame* getAnimFrame()
+  Frame getAnimFrame()
   {
     int i = 0;
     if (dir == 0)
@@ -485,12 +520,12 @@ class Sprite
 
     else if (dir == 1)
       i = sfr + animframe;
-    return &frames[i];
+    return frames[i];
   }
 
-  Frame* getFrame(int frameIndex)
+  Frame getFrame(int frameIndex)
   {
-    return &frames[frameIndex];
+    return frames[frameIndex];
   }
 };
 
@@ -501,7 +536,7 @@ void drawTileXY(int x, int y, int tx, int ty)
 
 void drawTileXYAlpha(int x, int y, int tx, int ty)
 {
-  image(tilesalpha[(ty * tilemapWidth) + tx], x * 8, y * 8);
+  imagealpha(tilesalpha[(ty * tilemapWidth) + tx], x * 8, y * 8);
 }
 
 void drawFrame(int x, int y, Frame frame)
@@ -577,6 +612,7 @@ public:
     type = -1;
     frames = 4;
     frame = Frame(tx, ty, tw, th);
+    frame.init = true;
     corrupting = false;
   }
 
@@ -843,29 +879,29 @@ public:
   {
     if (type == -1)
       return;
-    Frame* pf = sprite->getAnimFrame();
+    Frame pf = sprite->getAnimFrame();
     if (!corrupting)
     {
       if (type != 9)
       {
-        drawFrameAlpha((int)sprite->wx, (int)sprite->wy, *pf);
+        drawFrameAlpha((int)sprite->wx, (int)sprite->wy, pf);
       }
       else
       {
-        Frame* pf2 = sprite2->getAnimFrame();
+        Frame pf2 = sprite2->getAnimFrame();
         int yp1 = (int)sprite->wy;
         int yp2 = (int)sprite->wy + 3;
-        if (pf != NULL)
+        if (pf.init)
           drawFrameAlpha((int)sprite->wx,
-                         sprite->animframe == 0 ? yp1 : yp2, *pf);
-        if (pf2 != NULL)
+                         sprite->animframe == 0 ? yp1 : yp2, pf);
+        if (pf2.init)
           drawFrameAlpha((int)sprite->wx,
-                         sprite->animframe == 0 ? yp2 : yp1, *pf2);
+                         sprite->animframe == 0 ? yp2 : yp1, pf2);
       }
     }
     else
     {
-      drawFrameGlitch((int)sprite->wx, (int)sprite->wy, *pf);
+      drawFrameGlitch((int)sprite->wx, (int)sprite->wy, pf);
     }
   }
 };
@@ -956,7 +992,6 @@ void draw();
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow)
 {
   SDL_Surface *screen;
-  SDL_Surface *dblbuf;
   int done = 0;
   int i, k;
   float ss, sa, a, s;
@@ -1030,29 +1065,29 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
   int frame = 0;
   while (!done)
   {
-
-
     //    if (!Mix_PlayingMusic()) Mix_PlayMusic(music, 0);
     float newTime = SDL_GetTicks();
     float frameTime = newTime - currentTime;
     currentTime = newTime;
     millisecs += frameTime;
 
-    while (frameTime > 0.0f)
+    SDL_FillRect(dblbuf, NULL, SDL_MapRGB(dblbuf->format, 0, 0, 0));
 
+    while (frameTime > 0.0f)
     {
       deltaTime = fmin(frameTime, dt);
-      draw();
-
-      SDL_BlitSurface(tilemap,NULL,screen,NULL);
       frameTime -= deltaTime;
       t += deltaTime;
     }
+      draw();
+
+    SDL_BlitSurface(dblbuf,NULL,screen,NULL);
     SDL_Flip(screen);
+    
     frame++;
 
     /* User input */
-    while (SDL_WaitEvent(&event) >= 0)
+    while (SDL_PollEvent(&event))
     {
         switch (event.type) {
             case SDL_ACTIVEEVENT: {
@@ -1065,19 +1100,28 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                 }
             }
             break;
- 	
+ 	    
+    	    case SDL_KEYDOWN: 
+	    {
+		key = event.key.keysym.sym;
+		keyPressed();
+	    }
+	    break;
     	    case SDL_KEYUP: 
 	    {
+		key = event.key.keysym.sym;
+		keyReleased();
 		switch ( event.key.keysym.sym ) 
-            	{
+		{
         	    case SDLK_ESCAPE: 
 	            case SDLK_q: 
 			    printf("Bye bye...\n");
-			    exit(0);
+				done = 1;
                 	break;
 		}
 	    }
 	    break;
+
 
             case SDL_MOUSEBUTTONDOWN: {
                 printf("Mouse button pressed\n");
@@ -1086,12 +1130,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
 
             case SDL_QUIT: {
                 printf("Quit requested, quitting.\n");
-                exit(0);
+                done = 1;
             }
             break;
         }
     }
   }
+  SDL_Quit();
   exit(0);
 }
 
@@ -1133,15 +1178,6 @@ void
 
 resetScreens()
 {
-  for (int j = 0; j < screenCount; j++)
-  {
-    for (int i = 0; i < screenWidth * screenHeight; i++)
-      screenBG[j][i] = 510;
-    for (int i = 0; i < screenWidth * screenHeight; i++)
-      screenFG[j][i] = 510;
-    for (int i = 0; i < screenWidth * screenHeight; i++)
-      screenBlocks[j][i] = 0;
-  }
   textAlign(CENTER);
   loadScreens();
   setDefaultScreens();
@@ -1202,10 +1238,20 @@ resetGameToStart()
 
 void setup()
 {
+	for (int i=0;i<screenCount;i++) {
+		RoomExit e = RoomExit(
+				screenExits[i][0],
+				screenExits[i][1],
+				screenExits[i][2],
+				screenExits[i][3]);
 
-  IMG_Init(IMG_INIT_JPG | IMG_INIT_PNG);
+		screenExit[i] = e;
+	}
+
+  IMG_Init(IMG_INIT_PNG);
   tilemap = IMG_Load("data\\tilemapsmall.png");
   tilemapalpha = IMG_Load("data\\tilemapsmall_alpha.png");
+  SDL_SetAlpha(tilemapalpha,SDL_SRCALPHA,128);
 
   //  SDL_SetAlpha(iso1, SDL_SRCALPHA, 4);
   TTF_Init();
@@ -1216,8 +1262,6 @@ void setup()
   //  text1 = TTF_RenderText_Solid(font, "biflotrip", fColor);
   tilemapWidth = (int)(tilemap->w / 8);
   tilemapHeight = (int)(tilemap->h / 8);
-  tiles = new SDL_Surface *[tilemapWidth * tilemapHeight];
-  tilesalpha = new SDL_Surface *[tilemapWidth * tilemapHeight];
   Uint32 rmask, gmask, bmask, amask;
 
   /* Define masks for 32bit surface */
@@ -1234,25 +1278,27 @@ void setup()
   amask = 0xff000000;
 
 #endif /*  */
+      
   for (int y = 0; y < tilemapHeight; y++)
   {
     for (int x = 0; x < tilemapWidth; x++)
     {
-      SDL_Surface *tile =
-          SDL_DisplayFormatAlpha(SDL_CreateRGBSurface(SDL_SWSURFACE, 8, 8, 32, rmask, gmask,
-                                                      bmask, amask));
-      SDL_Surface *tilealpha =
-          SDL_DisplayFormatAlpha(SDL_CreateRGBSurface(SDL_SWSURFACE, 8, 8, 32, rmask, gmask,
-                                                      bmask, amask));
+      SDL_Surface *tile = IMG_Load("data\\tile.png");
+      SDL_Surface *tilealpha = IMG_Load("data\\tile.png");
       SDL_Rect src;
       src.x = x * 8;
       src.y = y * 8;
       src.w = 8;
       src.h = 8;
-      SDL_BlitSurface(tilemap, &src, tile, NULL);
-      SDL_BlitSurface(tilemapalpha, &src, tilealpha, NULL);
-      tiles[(y * tilemapWidth) + x] = tile;
-      tilesalpha[(y * tilemapWidth) + x] = tilealpha;
+      SDL_Rect dst;
+      dst.x = 0;
+      dst.y = 0;
+      dst.w = 8;
+      dst.h = 8;
+      SDL_BlitSurface(tilemap, &src, tile, &dst);
+      SDL_BlitSurface(tilemapalpha, &src, tilealpha, &dst);
+      tiles.push_back(tile);
+      tilesalpha.push_back(tilealpha);
     }
   }
   //  noSmooth();
@@ -1811,16 +1857,16 @@ void drawPlayer()
 {
   if (holdingLeft || holdingRight)
     playerSprite.animate(playerWalkSpeed, dt);
-  Frame* pf;
+  Frame pf;
   if (!playerJumping)
     pf = playerSprite.getAnimFrame();
-
+ 
   else
   {
     pf = playerSprite.getFrame(2 + playerSprite.dir * 4);
   }
   drawFrameAlpha((int)((playerSprite.wx * 8) / 8),
-                 (int)((playerSprite.wy * 8) / 8), *pf);
+                 (int)((playerSprite.wy * 8) / 8), pf);
 }
 void
 
@@ -1988,31 +2034,31 @@ void renderGame()
   if (!showingGameover)
   {
     drawBG();
-    drawEnemies();
+    //drawEnemies();
     drawPlayer();
     drawFG();
     if (showingWin)
       drawWin();
   }
-  if (editormode != EDITORMODE_EDIT)
-    renderMagic();
-  drawScreenUI();
-  drawMessages();
+
+  //renderMagic();
+  //drawScreenUI();
+  //drawMessages();
 }
 
 void keyPressed()
 {
-  if (key == '4')
+  if (key == SDLK_4)
     holdingLeft = true;
-  if (key == '6')
+  if (key == SDLK_6)
     holdingRight = true;
-  if (key == '5')
+  if (key == SDLK_5)
     holdingDown = true;
-  if (key == '8')
+  if (key == SDLK_8)
     holdingJump = true;
-  if (key == ' ')
+  if (key == SDLK_SPACE)
     setholdingAction(1);
-  if (key == 't' && editormode == EDITORMODE_EDIT)
+  if (key == SDLK_t && editormode == EDITORMODE_EDIT)
   {
     editormode = EDITORMODE_TEST;
     showingGameover = false;
@@ -2020,7 +2066,7 @@ void keyPressed()
     resetPlayer();
     mana = 1;
   }
-  if (key == 't' && editormode == EDITORMODE_PLAY)
+  if (key == SDLK_t && editormode == EDITORMODE_PLAY)
   {
     editormode = EDITORMODE_PLAY;
     showingGameover = false;
@@ -2030,14 +2076,30 @@ void keyPressed()
     speedStartTime = millis();
     speedRunEnd = false;
   }
-  if (key == 'p' && editormode != EDITORMODE_PLAY)
+  if (key == SDLK_n && editormode == EDITORMODE_PLAY)
+  {
+      currentScreen--;
+      if (currentScreen < 0)
+        currentScreen = 0;
+      resetEnemies();
+      newScreen();
+  }
+  if (key == SDLK_m && editormode == EDITORMODE_PLAY)
+  {
+      currentScreen++;
+      if (currentScreen >= screenCount - 1)
+        currentScreen = screenCount - 1;
+      resetEnemies();
+      newScreen();
+  }
+  if (key == SDLK_p && editormode != EDITORMODE_PLAY)
   {
     editormode = EDITORMODE_PLAY;
     showingGameover = false;
     resetGameToStart();
     speedRunMode = false;
   }
-  if (key == 'e' && editormode != EDITORMODE_EDIT)
+  if (key == SDLK_p && editormode != EDITORMODE_EDIT)
   {
     editormode = EDITORMODE_EDIT;
     showingGameover = false;
@@ -2047,18 +2109,18 @@ void keyPressed()
     showTilemap = -1;
   }
 
-  else if (key == 'e' && editormode == EDITORMODE_EDIT && showTilemap == -1)
+  else if (key == SDLK_e && editormode == EDITORMODE_EDIT && showTilemap == -1)
   {
     showExits = -showExits;
   }
-  if (key == 'r' && editormode == EDITORMODE_PLAY)
+  if (key == SDLK_r && editormode == EDITORMODE_PLAY)
   {
     setrestart();
     speedRunMode = false;
   }
   if (editormode == EDITORMODE_EDIT)
   {
-    if (key == 'v')
+    if (key == SDLK_v)
     {
       showEnemies = -showEnemies;
       if (showEnemies == 1)
@@ -2102,22 +2164,6 @@ void keyPressed()
       currentLayer++;
       if (currentLayer >= layerCount - 1)
         currentLayer = layerCount - 1;
-    }
-    if (key == 'n')
-    {
-      currentScreen--;
-      if (currentScreen < 0)
-        currentScreen = 0;
-      resetEnemies();
-      newScreen();
-    }
-    if (key == 'm')
-    {
-      currentScreen++;
-      if (currentScreen >= screenCount - 1)
-        currentScreen = screenCount - 1;
-      resetEnemies();
-      newScreen();
     }
     if (key == 'b')
     {
@@ -2248,15 +2294,15 @@ void keyPressed()
 
 void keyReleased()
 {
-  if (key == '8')
+  if (key == SDLK_8)
     holdingJump = false;
-  if (key == ' ')
+  if (key == SDLK_SPACE)
     setholdingAction(0);
-  if (key == '4')
+  if (key == SDLK_4)
     holdingLeft = false;
-  if (key == '6')
+  if (key == SDLK_6)
     holdingRight = false;
-  if (key == '5')
+  if (key == SDLK_5)
     holdingDown = false;
 }
 
@@ -2674,7 +2720,6 @@ void physics()
 
 void draw()
 {
-  printf("draw()\n");
   st = millis();
   background(0);
   beginDraw();
@@ -2686,19 +2731,10 @@ void draw()
   endDraw();
   et = millis();
   speedTimer += (et - st);
-  dt = 8;
+  dt = 0.45;
 }
 
 void
 setDefaultScreens()
 {
-	for (int i=0;i<screenCount;i++) {
-		RoomExit e = RoomExit(
-				screenExits[i][0],
-				screenExits[i][1],
-				screenExits[i][2],
-				screenExits[i][3]);
-
-		screenExit[i] = e;
-	}
 }
